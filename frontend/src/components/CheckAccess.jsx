@@ -40,7 +40,7 @@ export default function CheckAccess() {
           <h2 className="section-title">จำลองการตรวจสิทธิ์</h2>
           <p className="section-desc">
             ทดสอบเรียก <code className="rounded-lg bg-slate-100 px-1.5 py-0.5 font-mono text-xs">POST /api/check-access</code> เพื่อดูผลลัพธ์จริงตาม
-            base URL, client IP และ AD username
+            base URL, client IP และ ADUser
           </p>
         </div>
 
@@ -54,7 +54,7 @@ export default function CheckAccess() {
             <input className="input font-mono" value={form.clientIp} onChange={(e) => setForm({ ...form, clientIp: e.target.value })} placeholder="10.0.32.100" />
           </div>
           <div>
-            <label className="label">AD Username</label>
+            <label className="label">ADUser</label>
             <input className="input font-mono" value={form.adUsername} onChange={(e) => setForm({ ...form, adUsername: e.target.value })} placeholder="somchai.s" />
           </div>
           <button className="btn-primary" disabled={loading}>

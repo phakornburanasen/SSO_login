@@ -85,7 +85,7 @@ export default function AllowedUserManager() {
 
   const handleCopyPermissions = async () => {
     if (!copyFromUser.trim()) {
-      setErr('กรุณาใส่ AD Username ที่ต้องการอ้างอิงสิทธิ์')
+      setErr('กรุณาใส่ ADUser ที่ต้องการอ้างอิงสิทธิ์')
       return
     }
     setLoadingCopy(true)
@@ -113,7 +113,7 @@ export default function AllowedUserManager() {
     e.preventDefault()
     setErr('')
     setSuccess('')
-    if (!adUsername.trim()) return setErr('กรุณากรอก AD Username')
+    if (!adUsername.trim()) return setErr('กรุณากรอก ADUser')
     if (selectedEnvIds.length === 0) return setErr('กรุณาเลือกระบบอย่างน้อย 1 ระบบ')
 
     setSaving(true)
@@ -178,9 +178,9 @@ export default function AllowedUserManager() {
             </div>
           )}
 
-          {/* AD Username */}
+          {/* ADUser */}
           <div>
-            <label className="label">AD Username *</label>
+            <label className="label">ADUser *</label>
             <input
               className="input font-mono"
               value={adUsername}
@@ -193,14 +193,14 @@ export default function AllowedUserManager() {
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <div className="mb-3">
               <label className="label">อ้างอิงสิทธิ์จาก AD User อื่น (ไม่บังคับ)</label>
-              <p className="text-xs text-slate-500">ใส่ AD Username เพื่อดูว่าผู้นั้นมีสิทธิ์เข้าระบบอะไรบ้าง แล้วติ๊กตามได้ทันที</p>
+              <p className="text-xs text-slate-500">ใส่ ADUser เพื่อดูว่าผู้นั้นมีสิทธิ์เข้าระบบอะไรบ้าง แล้วติ๊กตามได้ทันที</p>
             </div>
             <div className="flex gap-3">
               <input
                 className="input font-mono flex-1"
                 value={copyFromUser}
                 onChange={(e) => setCopyFromUser(e.target.value)}
-                placeholder="AD Username ที่ต้องการอ้างอิง"
+                placeholder="ADUser ที่ต้องการอ้างอิง"
               />
               <button
                 type="button"
@@ -348,7 +348,7 @@ export default function AllowedUserManager() {
             <thead>
               <tr>
                 <th className="th">Environment</th>
-                <th className="th">AD Username</th>
+                <th className="th">ADUser</th>
                 <th className="th">Display Name</th>
                 <th className="th">Email</th>
                 <th className="th">หมดอายุ</th>
