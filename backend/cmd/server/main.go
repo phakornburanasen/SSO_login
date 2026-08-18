@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"sso-login/backend/internal/auth"
 	"sso-login/backend/internal/config"
 	"sso-login/backend/internal/httpapi"
 	"sso-login/backend/internal/service"
@@ -32,7 +33,8 @@ func main() {
 	defer repo.Close()
 	log.Printf("connected to PostgreSQL")
 
-	svc := service.New(repo)
+	jwt := auth.NewJWT(cfg.JWTSecret)
+	svc := service.New(repo, jwt, time.Duration(cfg.JWTTTLMinutes)*time.Minute)
 	handler := httpapi.New(svc, cfg)
 
 	srv := &http.Server{

@@ -58,6 +58,8 @@ func New(s *service.Service, cfg config.Config) http.Handler {
 	mux.HandleFunc("GET /api/allowed-users", a.listAllowedUsers)
 	mux.HandleFunc("POST /api/allowed-users", a.createAllowedUser)
 	mux.HandleFunc("DELETE /api/allowed-users/{id}", a.deleteAllowedUser)
+	mux.HandleFunc("POST /api/allowed-users/bulk", a.bulkCreateAllowedUsers)
+	mux.HandleFunc("GET /api/allowed-users/by-user", a.listAllowedUsersByADUsername)
 
 	// audit
 	mux.HandleFunc("GET /api/audit", a.listAudit)
@@ -385,6 +387,53 @@ func (a *API) deleteAllowedUser(w http.ResponseWriter, r *http.Request) {
 		}
 		serverError(w, e)
 	}
+}
+
+// bulkCreateAllowedUsers grants one AD user access to multiple environments at once.
+// Request body: { "adUsername": "...", "envIds": [1,2,3], "expiresAt": "2030-12-31T23:59:59Z" }
+func (a *API) bulkCreateAllowedUsers(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ADUsername string              `json:"adUsername"`
+		EnvIDs     []int64             `json:"envIds"`
+		ExpiresAt  *model.FlexibleTime `json:"expiresAt,omitempty"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if strings.TrimSpace(in.ADUsername) == "" {
+		write(w, http.StatusBadRequest, map[string]any{"error": "adUsername is required"})
+		return
+	}
+	if len(in.EnvIDs) == 0 {
+		write(w, http.StatusBadRequest, map[string]any{"error": "envIds must not be empty"})
+		return
+	}
+	claims, err := a.s.VerifyToken(r.Context(), tokenFromRequest(r))
+	grantedBy := claims
+	if err != nil {
+		grantedBy = "admin-ui"
+	}
+	created, skipped := a.s.BulkCreateAllowedUsers(r.Context(), in.ADUsername, in.EnvIDs, in.ExpiresAt, grantedBy)
+	write(w, http.StatusCreated, map[string]any{
+		"created": created,
+		"skipped": skipped,
+		"total":   len(created) + len(skipped),
+	})
+}
+
+// listAllowedUsersByADUsername returns all environment grants for a given AD user.
+func (a *API) listAllowedUsersByADUsername(w http.ResponseWriter, r *http.Request) {
+	username := r.URL.Query().Get("username")
+	if strings.TrimSpace(username) == "" {
+		write(w, http.StatusBadRequest, map[string]any{"error": "username query param is required"})
+		return
+	}
+	items, e := a.s.ListAllowedUsersByADUsername(r.Context(), username)
+	if e != nil {
+		serverError(w, e)
+		return
+	}
+	write(w, http.StatusOK, map[string]any{"allowedUsers": items})
 }
 
 // ----- audit -----

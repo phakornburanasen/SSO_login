@@ -1,10 +1,77 @@
 package model
 
 import (
+	"database/sql/driver"
 	"net/netip"
 	"strings"
 	"time"
 )
+
+// FlexibleTime is a time.Time that accepts multiple JSON input formats:
+//   - RFC3339:         "2006-01-02T15:04:05Z07:00"
+//   - datetime-local:  "2006-01-02T15:04"  (no seconds, no tz)
+//   - date only:       "2006-01-02"
+//
+// This lets browser <input type="datetime-local"> work without manual formatting.
+type FlexibleTime struct {
+	time.Time
+}
+
+func (t *FlexibleTime) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		t.Time = time.Time{}
+		return nil
+	}
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02",
+	} {
+		if parsed, err := time.Parse(layout, s); err == nil {
+			t.Time = parsed
+			return nil
+		}
+	}
+	// fallback: try RFC3339 with local tz
+	parsed, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return err
+	}
+	t.Time = parsed
+	return nil
+}
+
+func (t FlexibleTime) MarshalJSON() ([]byte, error) {
+	if t.Time.IsZero() {
+		return []byte("null"), nil
+	}
+	return []byte(`"` + t.Time.Format(time.RFC3339) + `"`), nil
+}
+
+// sql.Scanner support — pgx returns time.Time from timestamptz columns.
+func (t *FlexibleTime) Scan(value interface{}) error {
+	if value == nil {
+		t.Time = time.Time{}
+		return nil
+	}
+	switch v := value.(type) {
+	case time.Time:
+		t.Time = v
+		return nil
+	default:
+		return nil
+	}
+}
+
+// driver.Valuer support — store as time.Time.
+func (t FlexibleTime) Value() (driver.Value, error) {
+	if t.Time.IsZero() {
+		return nil, nil
+	}
+	return t.Time, nil
+}
 
 // --- Application / Environment ---
 
@@ -46,18 +113,18 @@ type AllowedIP struct {
 }
 
 type AllowedUser struct {
-	ID          int64      `json:"id"`
-	EnvID       int64      `json:"envId"`
-	ADUsername  string     `json:"adUsername"`
-	EmployeeID  string     `json:"employeeId"`
-	DisplayName string     `json:"displayName"`
-	Email       string     `json:"email"`
-	Department  string     `json:"department"`
-	Active      bool       `json:"active"`
-	GrantedAt   time.Time  `json:"grantedAt"`
-	GrantedBy   string     `json:"grantedBy"`
-	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
-	LastSyncAt  *time.Time `json:"lastSyncAt,omitempty"`
+	ID          int64         `json:"id"`
+	EnvID       int64         `json:"envId"`
+	ADUsername  string        `json:"adUsername"`
+	EmployeeID  string        `json:"employeeId"`
+	DisplayName string        `json:"displayName"`
+	Email       string        `json:"email"`
+	Department  string        `json:"department"`
+	Active      bool          `json:"active"`
+	GrantedAt   time.Time     `json:"grantedAt"`
+	GrantedBy   string        `json:"grantedBy"`
+	ExpiresAt   *FlexibleTime `json:"expiresAt,omitempty"`
+	LastSyncAt  *time.Time    `json:"lastSyncAt,omitempty"`
 }
 
 // --- Access Policy (optional) ---

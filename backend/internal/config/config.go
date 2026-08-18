@@ -16,14 +16,17 @@ type Config struct {
 	DatabaseURL     string
 	DBMaxOpen       int
 	DBMaxLifetime   time.Duration
+	JWTSecret       string
+	JWTTTLMinutes   int
 }
 
 func Load() (Config, error) {
 	loadEnv(".env")
 	maxOpen, e1 := strconv.Atoi(env("DB_MAX_OPEN", "20"))
 	lifeMin, e2 := strconv.Atoi(env("DB_MAX_LIFETIME_MIN", "30"))
-	if e1 != nil || e2 != nil || maxOpen <= 0 || lifeMin <= 0 {
-		return Config{}, errors.New("invalid DB_MAX_OPEN or DB_MAX_LIFETIME_MIN")
+	jwtTTL, e3 := strconv.Atoi(env("JWT_TTL_MINUTES", "480"))
+	if e1 != nil || e2 != nil || e3 != nil || maxOpen <= 0 || lifeMin <= 0 || jwtTTL <= 0 {
+		return Config{}, errors.New("invalid DB_MAX_OPEN, DB_MAX_LIFETIME_MIN, or JWT_TTL_MINUTES")
 	}
 	c := Config{
 		HTTPAddr:       env("HTTP_ADDR", ":12010"),
@@ -31,6 +34,8 @@ func Load() (Config, error) {
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		DBMaxOpen:      maxOpen,
 		DBMaxLifetime:  time.Duration(lifeMin) * time.Minute,
+		JWTSecret:      env("JWT_SECRET", "dev-only-change-me-please-32-bytes-min!!"),
+		JWTTTLMinutes:  jwtTTL,
 	}
 	var missing []string
 	for k, v := range map[string]string{"DATABASE_URL": c.DatabaseURL} {

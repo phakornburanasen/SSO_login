@@ -5,20 +5,26 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/netip"
 	"strings"
 	"time"
 
+	"sso-login/backend/internal/auth"
 	"sso-login/backend/internal/model"
 	"sso-login/backend/internal/store"
 )
 
 type Service struct {
 	repo store.Repository
+	jwt  *auth.JWT
+	ttl  time.Duration
 }
 
-func New(repo store.Repository) *Service { return &Service{repo: repo} }
+func New(repo store.Repository, jwt *auth.JWT, jwtTTL time.Duration) *Service {
+	return &Service{repo: repo, jwt: jwt, ttl: jwtTTL}
+}
 
 // CheckAccess ตรวจสิทธิ์ตาม (base_url, client_ip, ad_username)
 // คืนผลลัพธ์ + บันทึก audit log ทุกครั้ง
@@ -216,13 +222,45 @@ func (s *Service) DeleteAllowedUser(ctx context.Context, id int64) error {
 	return s.repo.DeleteAllowedUser(ctx, id)
 }
 
+// BulkCreateAllowedUsers creates allowed-user entries for the same AD user across
+// multiple environments in one call.  Skips environments where the user already
+// has a grant (ErrConflict) and returns the list of successfully created entries.
+func (s *Service) BulkCreateAllowedUsers(ctx context.Context, adUsername string, envIDs []int64, expiresAt *model.FlexibleTime, grantedBy string) ([]model.AllowedUser, []string) {
+	var created []model.AllowedUser
+	var skipped []string
+	for _, envID := range envIDs {
+		v := model.AllowedUser{
+			EnvID:      envID,
+			ADUsername: strings.TrimSpace(adUsername),
+			GrantedBy:  grantedBy,
+		}
+		if expiresAt != nil && !expiresAt.Time.IsZero() {
+			v.ExpiresAt = expiresAt
+		}
+		out, err := s.repo.CreateAllowedUser(ctx, v)
+		if err != nil {
+			skipped = append(skipped, "env#"+fmt.Sprint(envID))
+			continue
+		}
+		created = append(created, out)
+	}
+	return created, skipped
+}
+
+// ListAllowedUsersByADUsername returns all environment grants for a given AD user.
+// Used by the "copy permissions from another user" feature.
+func (s *Service) ListAllowedUsersByADUsername(ctx context.Context, adUsername string) ([]model.AllowedUser, error) {
+	return s.repo.ListAllowedUsersByADUsername(ctx, adUsername)
+}
+
 func (s *Service) ListAudit(ctx context.Context, limit int) ([]model.LoginAudit, error) {
 	return s.repo.ListAudit(ctx, limit)
 }
 
-// ---------- Admin Auth ----------
+// ---------- Admin Auth (JWT, stateless) ----------
 
 // Login ตรวจ AD username + password แบบง่าย (ยังไม่ผูก AD จริง ตามที่ผู้ใช้ระบุ)
+// แล้วออก JWT ให้ client — ไม่ต้องเก็บ session ในฐานข้อมูล
 func (s *Service) Login(ctx context.Context, username, password, clientIP string) (model.LoginResult, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
@@ -237,31 +275,32 @@ func (s *Service) Login(ctx context.Context, username, password, clientIP string
 		return model.LoginResult{}, errors.New("password too short")
 	}
 
-	// สร้าง token
-	var b [32]byte
-	if _, e := rand.Read(b[:]); e != nil {
-		return model.LoginResult{}, e
-	}
-	token := hex.EncodeToString(b[:])
-	expires := time.Now().Add(8 * time.Hour)
-	if e := s.repo.CreateAdminSession(ctx, token, username, clientIP, expires); e != nil {
-		return model.LoginResult{}, e
+	token, exp, err := s.jwt.Sign(username, username, s.ttl)
+	if err != nil {
+		return model.LoginResult{}, err
 	}
 	return model.LoginResult{
 		Token:       token,
 		Username:    username,
 		DisplayName: username,
-		ExpiresAt:   expires,
+		ExpiresAt:   exp,
 	}, nil
 }
 
+// Logout สำหรับ JWT: เป็น no-op เพราะ token เป็น stateless
+// Client ควรลบ token ทิ้งจาก localStorage เอง
 func (s *Service) Logout(ctx context.Context, token string) error {
-	return s.repo.DeleteAdminSession(ctx, token)
+	return nil
 }
 
+// VerifyToken ตรวจ JWT signature + expiration (ไม่ต้อง query DB)
 func (s *Service) VerifyToken(ctx context.Context, token string) (string, error) {
 	if token == "" {
 		return "", store.ErrUnauthorized
 	}
-	return s.repo.GetAdminSession(ctx, token)
+	claims, err := s.jwt.Verify(token)
+	if err != nil {
+		return "", store.ErrUnauthorized
+	}
+	return claims.Sub, nil
 }

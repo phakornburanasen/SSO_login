@@ -1,9 +1,14 @@
 // API client — ยิงตรงไปที่ api_gatewayGo
-// - Dev  : http://127.0.0.1:18000/api/SSO_login
-// - Prod : http://<gateway-host>:18000/api/SSO_login
-// ตั้ง base ได้ที่ VITE_API_BASE (เช่น /api/SSO_login ถ้าใช้ reverse proxy ฝั่งหน้า)
+// 
+// Default: ใช้ dynamic hostname จาก browser + port 18000
+//   - เปิดจากเครื่องไหนก็เรียก gateway เครื่องนั้นอัตโนมัติ
+//   - ไม่ต้องตั้งค่า .env สำหรับแต่ละเครื่อง
+//
+// Override: ตั้งค่า VITE_API_BASE ใน .env ถ้าต้องการใช้ URL เฉพาะ
+//   - ตัวอย่าง: VITE_API_BASE=https://sso.example.com/api/SSO_login
 
-const RAW_BASE = import.meta.env.VITE_API_BASE || 'http://10.115.2.61:18000/api/SSO_login'
+const GATEWAY_PORT = import.meta.env.VITE_GATEWAY_PORT || '18000'
+const RAW_BASE = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:${GATEWAY_PORT}/api/SSO_login`
 export const API_BASE = RAW_BASE.replace(/\/+$/, '')
 
 const TOKEN_KEY = 'sso_login_token'
@@ -84,9 +89,11 @@ export const api = {
   deleteAllowedIP: (id)          => request('DELETE', `/api/allowed-ips/${id}`),
 
   // allowed users
-  listAllowedUsers:  (envId = 0) => request('GET',    `/api/allowed-users?envId=${envId}`),
-  createAllowedUser: (body)       => request('POST',   '/api/allowed-users', body),
-  deleteAllowedUser: (id)         => request('DELETE', `/api/allowed-users/${id}`),
+  listAllowedUsers:       (envId = 0) => request('GET',    `/api/allowed-users?envId=${envId}`),
+  createAllowedUser:      (body)       => request('POST',   '/api/allowed-users', body),
+  deleteAllowedUser:      (id)         => request('DELETE', `/api/allowed-users/${id}`),
+  bulkCreateAllowedUsers: (body)       => request('POST',   '/api/allowed-users/bulk', body),
+  listAllowedUsersByUser: (username)   => request('GET',    `/api/allowed-users/by-user?username=${encodeURIComponent(username)}`),
 
   // audit
   listAudit: (limit = 100)      => request('GET',    `/api/audit?limit=${limit}`),

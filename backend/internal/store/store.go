@@ -45,16 +45,15 @@ type Repository interface {
 
 	// Allowed Users
 	ListAllowedUsers(ctx context.Context, envID int64) ([]model.AllowedUser, error)
+	ListAllowedUsersByADUsername(ctx context.Context, adUsername string) ([]model.AllowedUser, error)
 	CreateAllowedUser(ctx context.Context, u model.AllowedUser) (model.AllowedUser, error)
 	DeleteAllowedUser(ctx context.Context, id int64) error
 
 	// Audit
 	ListAudit(ctx context.Context, limit int) ([]model.LoginAudit, error)
 
-	// Auth (session ใน sso_sessions)
-	CreateAdminSession(ctx context.Context, token string, username, clientIP string, expiresAt time.Time) error
-	GetAdminSession(ctx context.Context, token string) (string, error)
-	DeleteAdminSession(ctx context.Context, token string) error
+	// Note: admin auth is JWT-based (stateless) and does not use the repository.
+	// The sso_sessions table is reserved for app-level access sessions.
 }
 
 type SQLStore struct{ pool *pgxpool.Pool }
@@ -389,6 +388,31 @@ func (s *SQLStore) ListAllowedUsers(ctx context.Context, envID int64) ([]model.A
 	return out, rows.Err()
 }
 
+func (s *SQLStore) ListAllowedUsersByADUsername(ctx context.Context, adUsername string) ([]model.AllowedUser, error) {
+	rows, e := s.pool.Query(ctx, `
+		SELECT allowed_user_id, env_id, ad_username, COALESCE(employee_id,''), COALESCE(display_name,''),
+		       COALESCE(email,''), COALESCE(department,''), is_active, granted_at, COALESCE(granted_by,''),
+		       expires_at, last_sync_at
+		FROM sso_allowed_users
+		WHERE ad_username = $1
+		ORDER BY env_id`, adUsername)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := make([]model.AllowedUser, 0)
+	for rows.Next() {
+		var v model.AllowedUser
+		if e = rows.Scan(&v.ID, &v.EnvID, &v.ADUsername, &v.EmployeeID, &v.DisplayName,
+			&v.Email, &v.Department, &v.Active, &v.GrantedAt, &v.GrantedBy,
+			&v.ExpiresAt, &v.LastSyncAt); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLStore) CreateAllowedUser(ctx context.Context, v model.AllowedUser) (model.AllowedUser, error) {
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO sso_allowed_users
@@ -459,37 +483,6 @@ func nullStr(s string) interface{} {
 		return nil
 	}
 	return s
-}
-
-// ---------- Admin Session (สำหรับหน้า management UI) ----------
-
-// ใช้ sso_sessions เดิม (สร้างมาจาก migration) — แต่เก็บ app_id/env_id=0 เพื่อแยก session
-// ประเภท admin ออกจาก check-access
-func (s *SQLStore) CreateAdminSession(ctx context.Context, token string, username, clientIP string, expiresAt time.Time) error {
-	_, e := s.pool.Exec(ctx, `
-		INSERT INTO sso_sessions (session_hash, app_id, env_id, ad_username, client_ip, status, expires_at)
-		VALUES ($1, 0, 0, $2, $3, 'ACTIVE', $4)`,
-		token, username, nullStr(clientIP), expiresAt)
-	return e
-}
-
-func (s *SQLStore) GetAdminSession(ctx context.Context, token string) (string, error) {
-	var username string
-	row := s.pool.QueryRow(ctx, `
-		SELECT ad_username FROM sso_sessions
-		WHERE session_hash = $1 AND app_id = 0 AND status = 'ACTIVE' AND expires_at > NOW()`,
-		token)
-	if e := row.Scan(&username); e != nil {
-		return "", e
-	}
-	return username, nil
-}
-
-func (s *SQLStore) DeleteAdminSession(ctx context.Context, token string) error {
-	_, e := s.pool.Exec(ctx, `
-		UPDATE sso_sessions SET status='LOGOUT', logged_out_at = NOW()
-		WHERE session_hash = $1`, token)
-	return e
 }
 
 func isUniqueViolation(e error) bool {
