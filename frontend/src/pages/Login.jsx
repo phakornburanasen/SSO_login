@@ -72,7 +72,8 @@ export default function Login({ onLogin }) {
                 className="input font-mono"
                 placeholder="เช่น TAXXX"
                 maxLength={15}
-                value={username} onChange={e => setUsername(e.target.value)}
+                value={username}
+                onChange={e => setUsername(e.target.value.toUpperCase())}
                 autoFocus
               />
             </div>
