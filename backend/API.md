@@ -1,6 +1,6 @@
 # API - sso-login backend
 
-Base URL: `http://<host>:12010`
+Base URL: `http://<host>:12080`
 
 ทุก response เป็น JSON
 

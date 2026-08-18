@@ -13,7 +13,7 @@
 │  ┌──────────────┐    ──────────────┐    ┌──────────────┐  │
 │  │   Frontend   │───▶│    Gateway   │───▶│   Backend    │  │
 │  │   (Nginx)    │    │   (Go)       │    │   (Go)       │  │
-│  │   Port :80   │    │  Port :18000 │    │  Port :12010 │  │
+│  │   Port :80   │    │  Port :18000 │    │  Port :12080 │  │
 │  └──────────────┘    ──────────────┘    └─────────────┘  │
 │                                                  │          │
 │                                          ┌───────▼───────┐  │
@@ -84,7 +84,7 @@ docker compose down -v
 |---------|-----|------|
 | Frontend | http://localhost | 80 |
 | API Gateway | http://localhost:18000 | 18000 |
-| Backend API | http://localhost:12010 | 12010 |
+| Backend API | http://localhost:12080 | 12080 |
 | PostgreSQL | localhost | 5432 |
 
 ---
@@ -97,7 +97,7 @@ docker compose down -v
 
 ```yaml
 environment:
-  - HTTP_ADDR=0.0.0.0:12010
+  - HTTP_ADDR=0.0.0.0:12080
   - FRONTEND_ORIGIN=*
   - DATABASE_URL=postgres://pguser:pgpass123@postgres:5432/postgres?sslmode=disable
   - DB_MAX_OPEN=20
@@ -113,7 +113,7 @@ environment:
 ```yaml
 environment:
   - GATEWAY_ADDR=0.0.0.0:18000
-  - BACKEND_URL=http://backend:12010
+  - BACKEND_URL=http://backend:12080
 ```
 
 ### Frontend
@@ -135,7 +135,7 @@ Nginx จะ proxy ไปที่ gateway
 docker compose ps
 
 # หรือเรียก health endpoint โดยตรง
-curl http://localhost:12010/health
+curl http://localhost:12080/health
 curl http://localhost:18000/health
 curl http://localhost:80
 ```
@@ -237,7 +237,7 @@ docker compose exec backend wget -qO- http://postgres:5432
 
 ```bash
 # ตรวจสอบ port ที่ใช้งานอยู่
-netstat -an | findstr "80 12010 18000 5432"
+netstat -an | findstr "80 12080 18000 5432"
 
 # เปลี่ยน port ใน docker-compose.yml
 ports:

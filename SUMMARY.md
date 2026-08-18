@@ -170,7 +170,7 @@ if (response.status === 200 && data.allow) {
 1. **Backend** - เปลี่ยน `HTTP_ADDR` ให้รับจากทุก IP:
    ```env
    # backend/.env
-   HTTP_ADDR=0.0.0.0:12010
+   HTTP_ADDR=0.0.0.0:12080
    FRONTEND_ORIGIN=*  # หรือระบุเฉพาะ origin
    ```
 
@@ -178,10 +178,10 @@ if (response.status === 200 && data.allow) {
    ```env
    # api_gatewayGo/.env
    GATEWAY_ADDR=0.0.0.0:18000
-   BACKEND_URL=http://10.0.32.71:12010
+   BACKEND_URL=http://10.0.32.71:12080
    ```
 
-3. **Firewall** - เปิด port 18000 และ 12010
+3. **Firewall** - เปิด port 18000 และ 12080
 
 4. **Frontend** - ตั้งค่า `VITE_API_BASE` ให้ชี้ไปที่ gateway IP:
    ```env

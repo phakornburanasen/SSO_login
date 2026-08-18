@@ -5,7 +5,7 @@
 
 ## Port
 
-* HTTP: **`:12010`** (override ได้ด้วย `HTTP_ADDR` env)
+* HTTP: **`:12080`** (override ได้ด้วย `HTTP_ADDR` env)
 
 ## โครงสร้าง
 
@@ -39,7 +39,7 @@ go build ./...
 psql -h 127.0.0.1 -U sso -d sso_permission -f ../migrations/001_sso_permission_init.sql
 
 # 2) ตั้ง env (หรือใช้ .env)
-set HTTP_ADDR=:12010
+set HTTP_ADDR=:12080
 set DATABASE_URL=postgres://sso:sso_password@127.0.0.1:5432/sso_permission?sslmode=disable
 
 # 3) รัน

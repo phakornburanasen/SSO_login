@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -25,10 +25,10 @@ COPY --from=builder /sso-login-server .
 COPY .env.example .env
 
 # Expose port
-EXPOSE 12010
+EXPOSE 12080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:12010/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:12080/health || exit 1
 
 CMD ["./sso-login-server"]

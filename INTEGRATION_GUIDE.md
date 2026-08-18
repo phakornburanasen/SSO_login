@@ -23,7 +23,7 @@
                            │ HTTP
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Backend API (Port 12010)                      │
+│                    Backend API (Port 12080)                      │
 │  - JWT Authentication                                           │
 │  - Access Control Logic                                         │
 │  - PostgreSQL Database                                          │
@@ -44,7 +44,7 @@
 
 ```env
 # เปลี่ยนจาก 127.0.0.1 เป็น 0.0.0.0 เพื่อให้รับ connection จากทุก IP
-HTTP_ADDR=0.0.0.0:12010
+HTTP_ADDR=0.0.0.0:12080
 
 # ตั้งค่า FRONTEND_ORIGIN ให้รองรับ origin ที่ต้องการ
 # ใช้ * สำหรับอนุญาตทุก origin (เหมาะสำหรับ development)
@@ -64,19 +64,19 @@ FRONTEND_ORIGIN=*
 GATEWAY_ADDR=0.0.0.0:18000
 
 # Backend URL - ชี้ไปที่ backend (อาจอยู่คนละเครื่อง)
-BACKEND_URL=http://10.0.32.71:12010
+BACKEND_URL=http://10.0.32.71:12080
 ```
 
 #### 1.3 Firewall Rules
 
 ต้องเปิด port ใน firewall:
 - **Port 18000** - API Gateway
-- **Port 12010** - Backend (ถ้าต้องการให้เข้าถึงตรง)
+- **Port 12080** - Backend (ถ้าต้องการให้เข้าถึงตรง)
 
 ```powershell
 # Windows Firewall
 New-NetFirewallRule -DisplayName "SSO Login Gateway" -Direction Inbound -LocalPort 18000 -Protocol TCP -Action Allow
-New-NetFirewallRule -DisplayName "SSO Login Backend" -Direction Inbound -LocalPort 12010 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "SSO Login Backend" -Direction Inbound -LocalPort 12080 -Protocol TCP -Action Allow
 ```
 
 ---

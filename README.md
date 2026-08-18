@@ -46,7 +46,7 @@ SSO Login เป็นบริการควบคุมสิทธิ์ก�
     ↓  (http://10.0.32.71/HelpDesk/)
 [Reverse Proxy / Gateway :18000]
     ↓
-[SSO Login backend :12010]  ←── PostgreSQL (sso_permission)
+[SSO Login backend :12080]  ←── PostgreSQL (sso_permission)
     ↓  (ALLOW / DENY_*)
 [Upstream App : HelpDesk / ERP / CRM ...]
 ```
@@ -72,7 +72,7 @@ SSO-login/
 │   ├── 001_sso_permission_init.sql
 │   └── 002_add_aduser_to_envs.sql
 ├── api_gatewayGo/               # Go reverse proxy (port 18000)
-├── backend/                     # Go SSO permission service (port 12010)
+├── backend/                     # Go SSO permission service (port 12080)
 │   ├── cmd/server/main.go
 │   ├── internal/
 │   │   ├── config/
@@ -123,7 +123,7 @@ psql -U postgres -d sso_permission -f ../migrations/001_sso_permission_init.sql
 ใช้ไฟล์ `.env` ในโฟลเดอร์ `backend/` (ดูตัวอย่างใน [backend/.env.example](./backend/.env.example)):
 
 ```text
-HTTP_ADDR=:12010
+HTTP_ADDR=:12080
 FRONTEND_ORIGIN=*
 DATABASE_URL=postgres://sso:CHANGE_ME@127.0.0.1:5432/sso_permission?sslmode=disable
 DB_MAX_OPEN=20
@@ -139,7 +139,7 @@ cd backend
 go run ./cmd/server
 ```
 
-Service จะฟังที่ `:12010` (override ได้ด้วย `HTTP_ADDR`)
+Service จะฟังที่ `:12080` (override ได้ด้วย `HTTP_ADDR`)
 
 ## Testing
 
@@ -160,7 +160,7 @@ go build -o bin/sso-login-server ./cmd/server
 
 * Build เป็น Windows service หรือรันด้วย `nssm` / `sc.exe`
 * ใช้ env file หรือ Windows Environment Variables
-* เปิด port 12010 บน firewall เฉพาะ network ที่ต้องการ
+* เปิด port 12080 บน firewall เฉพาะ network ที่ต้องการ
 
 ## API
 

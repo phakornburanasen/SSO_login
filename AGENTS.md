@@ -14,14 +14,14 @@ Follow the rules defined in:
 ## Project at a Glance
 
 * **Project**: SSO Login — Permission Controller (Go)
-* **Default ports**: backend `12010`, gateway `18000`
+* **Default ports**: backend `12080`, gateway `18000`
 * **Database**: PostgreSQL 13+ (schema in `migrations/`)
 * **Stack**: Go 1.23+, `net/http` standard library, `github.com/jackc/pgx/v5`
 * **Module path**: `sso-login/backend`
 
 Key directories:
 
-* `backend/` — Go service (port 12010)
+* `backend/` — Go service (port 12080)
 * `api_gatewayGo/` — Go reverse proxy (port 18000)
 * `migrations/` — SQL migrations (PostgreSQL)
 * `docs/` — project + user rules

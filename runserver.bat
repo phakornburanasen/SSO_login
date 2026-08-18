@@ -6,7 +6,7 @@ REM ============================================================
 REM  SSO Login - Run All Services (Windows)
 REM  Starts:
 REM    - api_gatewayGo  : http://localhost:18000
-REM    - backend        : http://localhost:12010
+REM    - backend        : http://localhost:12080
 REM    - frontend (dev) : http://localhost:3000
 REM ============================================================
 
@@ -22,7 +22,7 @@ echo.
 echo ============================================================
 echo   SSO Login - Starting all services
 echo   - api_gatewayGo  : http://localhost:18000
-echo   - backend        : http://localhost:12010
+echo   - backend        : http://localhost:12080
 echo   - frontend (dev) : http://localhost:3000
 echo ============================================================
 echo.
@@ -61,9 +61,9 @@ REM ---- Start api_gatewayGo (port 18000) ----
 echo [INFO] Starting api_gatewayGo on :18000 ...
 start "SSO api_gatewayGo (18000)" cmd /k "cd /d %GATEWAY_DIR% && bin\sso-login-gateway.exe"
 
-REM ---- Start backend (port 12010) ----
-echo [INFO] Starting backend on :12010 ...
-start "SSO Backend (12010)" cmd /k "cd /d %BACKEND_DIR% && bin\sso-login-server.exe"
+REM ---- Start backend (port 12080) ----
+echo [INFO] Starting backend on :12080 ...
+start "SSO Backend (12080)" cmd /k "cd /d %BACKEND_DIR% && bin\sso-login-server.exe"
 
 REM ---- Start frontend dev server (port 3000) ----
 if exist "%FRONTEND_DIR%\package.json" (

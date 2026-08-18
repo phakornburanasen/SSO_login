@@ -45,7 +45,7 @@ VITE_API_BASE=http://127.0.0.1:18000/api/SSO_login
 
 | ที่ไหน                       | ค่า                  | หมายเหตุ |
 |------------------------------|----------------------|---------|
-| `api_gatewayGo/service.json` | `"SSO_login": "http://127.0.0.1:12010"` | service name → backend |
+| `api_gatewayGo/service.json` | `"SSO_login": "http://127.0.0.1:12080"` | service name → backend |
 | Gateway port                 | `18000`              | หลีกเลี่ยง ERR_UNSAFE_PORT ของ Chrome/Edge |
 | Vite `base`                  | `/SSO_login/`        | path ที่ assets โหลด |
 | `VITE_API_BASE`              | `http://127.0.0.1:18000/api/SSO_login` | API base |
@@ -61,8 +61,8 @@ Browser  →  http://gateway:18000/SSO_login/         (ไฟล์ static)
 Browser  →  http://gateway:18000/api/SSO_login/api/auth/login
         ↓
 [Gateway :18000]
-        ↓  rewrite → http://127.0.0.1:12010/api/auth/login
-[SSO backend :12010]
+        ↓  rewrite → http://127.0.0.1:12080/api/auth/login
+[SSO backend :12080]
         ↓
 [PostgreSQL @ 10.0.32.71]
 ```
@@ -74,8 +74,8 @@ Browser  →  http://localhost:3000/SSO_login/        (Vite serves)
 Browser  →  http://127.0.0.1:18000/api/SSO_login/api/auth/login
         ↓
 [Gateway :18000]
-        ↓  rewrite → http://127.0.0.1:12010/api/auth/login
-[SSO backend :12010]
+        ↓  rewrite → http://127.0.0.1:12080/api/auth/login
+[SSO backend :12080]
 ```
 
 ## โครงสร้าง

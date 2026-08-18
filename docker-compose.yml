@@ -1,84 +1,86 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: sso-postgres
-    environment:
-      POSTGRES_USER: pguser
-      POSTGRES_PASSWORD: pgpass123
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-    networks:
-      - sso-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pguser -d postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
+  # =========================
   # Backend API
+  # =========================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: sso-backend
     ports:
-      - "12010:12010"
+      - "12080:12080"
+
     environment:
-      - HTTP_ADDR=0.0.0.0:12010
-      - FRONTEND_ORIGIN=*
-      - DATABASE_URL=postgres://pguser:pgpass123@postgres:5432/postgres?sslmode=disable
-      - DB_MAX_OPEN=20
-      - DB_MAX_LIFETIME_MIN=30
-      - JWT_SECRET=dev-only-change-me-please-32-bytes-min!!
-      - JWT_TTL_MINUTES=480
-    depends_on:
-      postgres:
-        condition: service_healthy
+      HTTP_ADDR: "0.0.0.0:12080"
+      FRONTEND_ORIGIN: "*"
+
+      # PostgreSQL ที่มีอยู่แล้ว
+      DATABASE_URL: "postgres://pguser:pgpass123@postgres_db:5432/postgres?sslmode=disable"
+
+      DB_MAX_OPEN: "20"
+      DB_MAX_LIFETIME_MIN: "30"
+
+      JWT_SECRET: "dev-only-change-me-please-32-bytes-min!!"
+      JWT_TTL_MINUTES: "480"
+
     networks:
       - sso-network
+
     restart: unless-stopped
 
+
+  # =========================
   # API Gateway
+  # =========================
   api_gateway:
     build:
       context: ./api_gatewayGo
       dockerfile: Dockerfile
+
     container_name: sso-gateway
+
     ports:
       - "18000:18000"
+
     environment:
-      - GATEWAY_ADDR=0.0.0.0:18000
-      - BACKEND_URL=http://backend:12010
+      GATEWAY_ADDR: "0.0.0.0:18000"
+      BACKEND_URL: "http://backend:12080"
+
     depends_on:
       - backend
+
     networks:
       - sso-network
+
     restart: unless-stopped
 
+
+  # =========================
   # Frontend
+  # =========================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+
     container_name: sso-frontend
+
     ports:
       - "80:80"
+
     depends_on:
       - api_gateway
+
     networks:
       - sso-network
+
     restart: unless-stopped
 
-volumes:
-  postgres_data:
 
+# =========================
+# Network
+# =========================
 networks:
   sso-network:
     driver: bridge

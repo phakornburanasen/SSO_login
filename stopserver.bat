@@ -6,7 +6,7 @@ REM ============================================================
 REM  SSO Login - Stop All Services
 REM  Kills:
 REM    - api_gatewayGo (18000)
-REM    - backend (12010)
+REM    - backend (12080)
 REM    - frontend dev server (3000)
 REM ============================================================
 
@@ -18,7 +18,7 @@ for /f "tokens=5" %%P in ('netstat -aon ^| findstr ":18000" ^| findstr "LISTENIN
     taskkill /F /PID %%P >nul 2>&1
 )
 
-for /f "tokens=5" %%P in ('netstat -aon ^| findstr ":12010" ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%P in ('netstat -aon ^| findstr ":12080" ^| findstr "LISTENING"') do (
     echo [INFO] Killing backend PID %%P ...
     taskkill /F /PID %%P >nul 2>&1
 )

@@ -29,7 +29,7 @@
                              │ HTTP
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Backend API (Port 12010)                    │
+│                  Backend API (Port 12080)                    │
 │  - JWT Authentication                                        │
 │  - Access Control Logic                                      │
 │  - PostgreSQL Database                                       │
@@ -46,7 +46,7 @@
 - ✅ ไม่มีปัญหา CORS (same-origin)
 - ✅ ไม่ต้องตั้งค่า `VITE_API_BASE`
 - ✅ ง่ายต่อการจัดการ
-- ✅ ปลอดภัยกว่า (ไม่ expose port 12010, 18000 ออกภายนอก)
+- ✅ ปลอดภัยกว่า (ไม่ expose port 12080, 18000 ออกภายนอก)
 
 ### การตั้งค่า
 
@@ -59,7 +59,7 @@ cp .env.example .env
 
 แก้ไข `backend/.env`:
 ```env
-HTTP_ADDR=127.0.0.1:12010
+HTTP_ADDR=127.0.0.1:12080
 FRONTEND_ORIGIN=*
 DATABASE_URL=postgres://pguser:pgpass123@localhost:5432/postgres?sslmode=disable
 DB_MAX_OPEN=20
@@ -78,7 +78,7 @@ cp .env.example .env
 แก้ไข `api_gatewayGo/.env`:
 ```env
 GATEWAY_ADDR=127.0.0.1:18000
-BACKEND_URL=http://127.0.0.1:12010
+BACKEND_URL=http://127.0.0.1:12080
 ```
 
 #### 3. Frontend Build
@@ -194,14 +194,14 @@ sudo systemctl start sso-gateway
 
 `backend/.env`:
 ```env
-HTTP_ADDR=0.0.0.0:12010
+HTTP_ADDR=0.0.0.0:12080
 FRONTEND_ORIGIN=https://app.example.com  # domain ของ frontend
 ```
 
 `api_gatewayGo/.env`:
 ```env
 GATEWAY_ADDR=0.0.0.0:18000
-BACKEND_URL=http://127.0.0.1:12010
+BACKEND_URL=http://127.0.0.1:12080
 ```
 
 #### 2. Frontend (Server B หรือ Static Hosting)
@@ -294,7 +294,7 @@ New-NetFirewallRule -DisplayName "SSO Login Gateway" `
 # เปิด port สำหรับ Backend (ถ้าต้องการให้เข้าถึงตรง)
 New-NetFirewallRule -DisplayName "SSO Login Backend" `
   -Direction Inbound `
-  -LocalPort 12010 `
+  -LocalPort 12080 `
   -Protocol TCP `
   -Action Allow
 ```
@@ -303,7 +303,7 @@ New-NetFirewallRule -DisplayName "SSO Login Backend" `
 
 ```bash
 sudo ufw allow 18000/tcp  # Gateway
-sudo ufw allow 12010/tcp  # Backend (optional)
+sudo ufw allow 12080/tcp  # Backend (optional)
 sudo ufw allow 80/tcp     # HTTP
 sudo ufw allow 443/tcp    # HTTPS
 ```
@@ -316,7 +316,7 @@ sudo ufw allow 443/tcp    # HTTPS
 
 ```bash
 # ตรวจสอบ Backend
-curl http://localhost:12010/health
+curl http://localhost:12080/health
 
 # ตรวจสอบ Gateway
 curl http://localhost:18000/api/SSO_login/health
@@ -375,10 +375,10 @@ Unable to connect to API Gateway
 1. ตรวจสอบว่า service รันอยู่:
    ```bash
    # Windows
-   netstat -an | findstr "18000 12010"
+   netstat -an | findstr "18000 12080"
    
    # Linux
-   ss -tlnp | grep -E "18000|12010"
+   ss -tlnp | grep -E "18000|12080"
    ```
 
 2. ตรวจสอบ firewall rules
@@ -467,7 +467,7 @@ JWT_TTL_MINUTES=480
 GATEWAY_ADDR=0.0.0.0:8080
 
 # ถ้า backend อยู่คนละเครื่อง
-BACKEND_URL=http://10.0.32.71:12010
+BACKEND_URL=http://10.0.32.71:12080
 ```
 
 ### Nginx
@@ -515,7 +515,7 @@ docker logs -f sso-gateway
 ### Health Monitoring
 
 ตั้ง endpoint monitoring ที่:
-- `http://localhost:12010/health` - Backend
+- `http://localhost:12080/health` - Backend
 - `http://localhost:18000/api/SSO_login/health` - Gateway
 
 ตัวอย่าง Prometheus metrics (ถ้าต้องการเพิ่ม):
@@ -523,7 +523,7 @@ docker logs -f sso-gateway
 scrape_configs:
   - job_name: 'sso-login'
     static_configs:
-      - targets: ['localhost:12010', 'localhost:18000']
+      - targets: ['localhost:12080', 'localhost:18000']
 ```
 
 ---

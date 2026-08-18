@@ -11,13 +11,13 @@ import (
 )
 
 type Config struct {
-	HTTPAddr        string
-	FrontendOrigin  string
-	DatabaseURL     string
-	DBMaxOpen       int
-	DBMaxLifetime   time.Duration
-	JWTSecret       string
-	JWTTTLMinutes   int
+	HTTPAddr       string
+	FrontendOrigin string
+	DatabaseURL    string
+	DBMaxOpen      int
+	DBMaxLifetime  time.Duration
+	JWTSecret      string
+	JWTTTLMinutes  int
 }
 
 func Load() (Config, error) {
@@ -29,7 +29,7 @@ func Load() (Config, error) {
 		return Config{}, errors.New("invalid DB_MAX_OPEN, DB_MAX_LIFETIME_MIN, or JWT_TTL_MINUTES")
 	}
 	c := Config{
-		HTTPAddr:       env("HTTP_ADDR", ":12010"),
+		HTTPAddr:       env("HTTP_ADDR", ":12080"),
 		FrontendOrigin: env("FRONTEND_ORIGIN", "*"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		DBMaxOpen:      maxOpen,

@@ -31,7 +31,7 @@ The project has two Go services + a PostgreSQL database:
     ↓
 [Reverse Proxy / Gateway :18000]  (api_gatewayGo/)
     ↓
-[SSO Login backend :12010]        (backend/)
+[SSO Login backend :12080]        (backend/)
     ↓
 [PostgreSQL — sso_permission]
 ```
@@ -49,7 +49,7 @@ Rules:
 ## 3. Project Structure
 
 ```text
-backend/                     Go service (port 12010)
+backend/                     Go service (port 12080)
     cmd/server/main.go
     internal/
         config/              โหลด env + .env
@@ -148,7 +148,7 @@ Environment variables ที่ใช้:
 
 | Variable             | Required | คำอธิบาย                       |
 |----------------------|----------|---------------------------------|
-| `HTTP_ADDR`          | no       | default `:12010`                |
+| `HTTP_ADDR`          | no       | default `:12080`                |
 | `FRONTEND_ORIGIN`    | no       | default `*` (CORS)              |
 | `DATABASE_URL`       | **yes**  | pgx connection string           |
 | `DB_MAX_OPEN`        | no       | default `20`                    |
