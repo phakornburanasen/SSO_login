@@ -17,13 +17,24 @@ import (
 )
 
 type Service struct {
-	repo store.Repository
-	jwt  *auth.JWT
-	ttl  time.Duration
+	repo     store.Repository
+	jwt      *auth.JWT
+	ttl      time.Duration
+	employee *EmployeeAPIClient
 }
 
-func New(repo store.Repository, jwt *auth.JWT, jwtTTL time.Duration) *Service {
-	return &Service{repo: repo, jwt: jwt, ttl: jwtTTL}
+func New(repo store.Repository, jwt *auth.JWT, jwtTTL time.Duration, emp *EmployeeAPIClient) *Service {
+	return &Service{repo: repo, jwt: jwt, ttl: jwtTTL, employee: emp}
+}
+
+// GetEmployee คืนข้อมูล employee สำหรับแสดงใน navbar
+// empID คือ ADUser (เช่น T9058) — จะถูกส่งเป็น emp_id ให้ external API
+// คืน (employee, fromCache, error)
+func (s *Service) GetEmployee(ctx context.Context, empID string) (Employee, bool, error) {
+	if s.employee == nil {
+		return Employee{}, false, errors.New("employee api client not configured")
+	}
+	return s.employee.GetEmployee(ctx, empID)
 }
 
 // CheckAccess ตรวจสิทธิ์ตาม (base_url, client_ip, ad_username)
@@ -259,32 +270,137 @@ func (s *Service) ListAudit(ctx context.Context, limit int) ([]model.LoginAudit,
 
 // ---------- Admin Auth (JWT, stateless) ----------
 
+// ErrNoPermission ใช้ตอน login สำเร็จแต่ไม่มี env ให้ดูแล
+var ErrNoPermission = errors.New("คุณยังไม่ได้รับสิทธิ์เข้าใช้งานระบบ กรุณาติดต่อผู้ดูแลเพื่อขอสิทธิ์")
+
+// ErrInvalidCredentials ใช้ตอน username/password ผิด
+var ErrInvalidCredentials = errors.New("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+
+// ErrSystemNotReady ใช้ตอน schema/table ไม่พร้อม
+var ErrSystemNotReady = errors.New("ระบบยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ")
+
+// friendlyDBError แปลง error จาก DB ให้เป็นข้อความที่ user เข้าใจ
+// - ถ้าเป็น "table not found" (SQLSTATE 42P01) → แจ้งให้รัน migration
+// - อื่นๆ → คืน error เดิม
+func friendlyDBError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	// ตรวจ SQLSTATE 42P01 (undefined_table) — pgx ส่งผ่าน wrapped error
+	if strings.Contains(msg, "SQLSTATE 42P01") ||
+		strings.Contains(msg, "does not exist") && strings.Contains(msg, "relation") {
+		return fmt.Errorf("%w — %s", ErrSystemNotReady,
+			"ตาราง sso_admins ยังไม่ถูกสร้าง กรุณารัน migration: psql -f migrations/003_sso_admins_table.sql")
+	}
+	return err
+}
+
 // Login ตรวจ AD username + password แบบง่าย (ยังไม่ผูก AD จริง ตามที่ผู้ใช้ระบุ)
 // แล้วออก JWT ให้ client — ไม่ต้องเก็บ session ในฐานข้อมูล
+//
+// สำคัญ: หลัง auth สำเร็จ ต้อง query sso_environments.ADUser เพื่อดูว่า user
+// มีสิทธิ์จัดการ env ใดบ้าง ถ้าไม่มีเลย → ErrNoPermission
+// แล้วแนบ list ของ envs ที่ดูแลได้ไปกับ LoginResult
 func (s *Service) Login(ctx context.Context, username, password, clientIP string) (model.LoginResult, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
-		return model.LoginResult{}, errors.New("username and password are required")
+		return model.LoginResult{}, ErrInvalidCredentials
 	}
 	if len(username) > 15 {
-		return model.LoginResult{}, errors.New("username too long (max 15)")
+		return model.LoginResult{}, fmt.Errorf("ชื่อผู้ใช้ยาวเกิน 15 ตัวอักษร")
 	}
 	// ตอนนี้: ยอมรับ user ที่ไม่ว่าง และ password ที่ไม่ว่าง
 	// (ในอนาคตสามารถต่อ AD/LDAP ได้ที่นี่)
 	if len(password) < 3 {
-		return model.LoginResult{}, errors.New("password too short")
+		return model.LoginResult{}, fmt.Errorf("รหัสผ่านต้องมีอย่างน้อย 3 ตัวอักษร")
 	}
 
-	token, exp, err := s.jwt.Sign(username, username, s.ttl)
+	// เช็คว่า user เป็น admin หรือไม่
+	isAdmin, err := s.repo.IsAdminUser(ctx, username)
 	if err != nil {
-		return model.LoginResult{}, err
+		return model.LoginResult{}, friendlyDBError(err)
 	}
+
+	var (
+		accessibleEnvs []model.AccessibleEnv
+		role           string
+	)
+
+	if isAdmin {
+		// admin: ดู env ทั้งหมด
+		accessibleEnvs, err = s.listAllActiveEnvs(ctx)
+		if err != nil {
+			return model.LoginResult{}, friendlyDBError(err)
+		}
+		role = "admin"
+	} else {
+		// user ทั่วไป: เฉพาะ env ที่ตัวเองเป็น ADUser
+		accessibleEnvs, err = s.repo.ListAccessibleEnvsByADUser(ctx, username)
+		if err != nil {
+			return model.LoginResult{}, friendlyDBError(err)
+		}
+		// ถ้าไม่มี env เลย → ไม่มีสิทธิ์ → DENY
+		if len(accessibleEnvs) == 0 {
+			return model.LoginResult{}, ErrNoPermission
+		}
+		role = "user"
+	}
+
+	token, exp, err := s.jwt.Sign(username, username, role, s.ttl)
+	if err != nil {
+		return model.LoginResult{}, fmt.Errorf("ไม่สามารถสร้าง token ได้: %w", err)
+	}
+
+	_ = clientIP // ใช้สำหรับ audit ในอนาคต
+
 	return model.LoginResult{
-		Token:       token,
-		Username:    username,
-		DisplayName: username,
-		ExpiresAt:   exp,
+		Token:          token,
+		Username:       username,
+		DisplayName:    username,
+		ExpiresAt:      exp,
+		AccessibleEnvs: accessibleEnvs,
+		Role:           role,
 	}, nil
+}
+
+// listAllActiveEnvs คืน env ทั้งหมดที่ active (ใช้สำหรับ admin)
+func (s *Service) listAllActiveEnvs(ctx context.Context) ([]model.AccessibleEnv, error) {
+	all, err := s.repo.ListEnvironments(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.AccessibleEnv, 0, len(all))
+	for _, e := range all {
+		if !e.Active {
+			continue
+		}
+		out = append(out, model.AccessibleEnv{
+			ID:       e.ID,
+			AppCode:  e.AppCode,
+			EnvCode:  e.EnvCode,
+			EnvName:  e.EnvName,
+			BaseURL:  e.BaseURL,
+			HostIP:   e.HostIP,
+			BasePath: e.BasePath,
+			Active:   e.Active,
+		})
+	}
+	return out, nil
+}
+
+// MyEnvs คืน env ทั้งหมดที่ user มีสิทธิ์จัดการ (ใช้กับ /api/my-envs)
+// - admin: env ทั้งหมดที่ active
+// - user: เฉพาะ env ที่ตัวเองเป็น ADUser
+func (s *Service) MyEnvs(ctx context.Context, username string) ([]model.AccessibleEnv, error) {
+	isAdmin, err := s.repo.IsAdminUser(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	if isAdmin {
+		return s.listAllActiveEnvs(ctx)
+	}
+	return s.repo.ListAccessibleEnvsByADUser(ctx, username)
 }
 
 // Logout สำหรับ JWT: เป็น no-op เพราะ token เป็น stateless
@@ -295,12 +411,33 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 
 // VerifyToken ตรวจ JWT signature + expiration (ไม่ต้อง query DB)
 func (s *Service) VerifyToken(ctx context.Context, token string) (string, error) {
+	uname, _, err := s.VerifyTokenWithRole(ctx, token)
+	return uname, err
+}
+
+// VerifyTokenWithRole ตรวจ JWT แล้วคืน username + role
+// role ฝังอยู่ใน JWT claims ตอน Login — ไม่ต้อง query DB
+func (s *Service) VerifyTokenWithRole(ctx context.Context, token string) (string, string, error) {
 	if token == "" {
-		return "", store.ErrUnauthorized
+		return "", "", store.ErrUnauthorized
 	}
 	claims, err := s.jwt.Verify(token)
 	if err != nil {
-		return "", store.ErrUnauthorized
+		return "", "", store.ErrUnauthorized
 	}
-	return claims.Sub, nil
+	return claims.Sub, claims.Role, nil
+}
+
+// ---------- Admin management ----------
+
+func (s *Service) ListAdmins(ctx context.Context) ([]model.Admin, error) {
+	return s.repo.ListAdmins(ctx)
+}
+
+func (s *Service) AddAdmin(ctx context.Context, a model.Admin) (int64, error) {
+	return s.repo.AddAdmin(ctx, a)
+}
+
+func (s *Service) RemoveAdmin(ctx context.Context, id int64) error {
+	return s.repo.RemoveAdmin(ctx, id)
 }

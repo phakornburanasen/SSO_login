@@ -6,6 +6,7 @@ import AllowedUserManager from '../components/AllowedUserManager.jsx'
 import AuditLog from '../components/AuditLog.jsx'
 import CheckAccess from '../components/CheckAccess.jsx'
 import { DASHBOARD_TABS, getTabMeta } from '../navigation.js'
+import { useEmployee } from '../hooks/useEmployee.js'
 
 export default function Dashboard({ activeTab, user, onLogout, onNavigate }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -15,6 +16,19 @@ export default function Dashboard({ activeTab, user, onLogout, onNavigate }) {
   })
   const menuRef = useRef(null)
   const tabMeta = useMemo(() => getTabMeta(activeTab), [activeTab])
+
+  // ดึงชื่อ-นามสกุลจาก external API (proxy ผ่าน backend)
+  const { employee, loading: empLoading } = useEmployee(user?.username)
+
+  // ลำดับการแสดงชื่อ: fullName (form_first_name + form_last_name) → displayName → username
+  const firstName = employee?.form_first_name || ''
+  const lastName = employee?.form_last_name || ''
+  const displayName =
+    employee?.fullName ||
+    (firstName || lastName ? `${firstName} ${lastName}`.trim() : null) ||
+    user?.displayName ||
+    user?.username ||
+    '-'
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -112,27 +126,54 @@ export default function Dashboard({ activeTab, user, onLogout, onNavigate }) {
                 onClick={() => setMenuOpen((open) => !open)}
                 className="flex items-center gap-3 bg-slate-50 px-4 py-2.5 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all duration-200"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-slate-600">
-                  <UserIcon className="h-4 w-4" />
-                </div>
+                <Avatar username={user?.username} name={displayName} size="sm" />
                 <div className="hidden text-left md:block">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {user?.displayName || user?.username || '-'}
+                  <div className="text-sm font-semibold text-slate-900 leading-tight">
+                    {empLoading ? (
+                      <span className="inline-block h-3 w-24 bg-slate-200 rounded animate-pulse" />
+                    ) : (
+                      displayName
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    {user?.username || '-'}
                   </div>
                 </div>
                 <ChevronDownIcon className="h-4 w-4 text-slate-400" />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-64 border border-slate-200/80 bg-white rounded-xl shadow-lg z-50 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-72 border border-slate-200/80 bg-white rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="bg-slate-50 p-4 border-b border-slate-100">
-                    <div className="text-sm font-semibold text-slate-900">
-                      {user?.displayName || user?.username || '-'}
+                    <div className="flex items-center gap-3">
+                      <Avatar username={user?.username} name={displayName} size="lg" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-slate-900 truncate">
+                          {empLoading ? (
+                            <span className="inline-block h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                          ) : (
+                            displayName
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5 truncate">
+                          ADUser: {user?.username || '-'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      บัญชีผู้ใช้: {user?.username || '-'}
+                    <div className="mt-3 flex items-center gap-2">
+                      <span
+                        className={
+                          'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ' +
+                          (user?.role === 'admin'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-blue-100 text-blue-700')
+                        }
+                      >
+                        {user?.role === 'admin' ? 'Admin' : 'User'}
+                      </span>
                     </div>
                   </div>
+
                   <div className="p-2">
                     <button
                       type="button"
@@ -167,7 +208,7 @@ export default function Dashboard({ activeTab, user, onLogout, onNavigate }) {
             &copy; {new Date().getFullYear()} SSO Login System
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">User:</span> {user?.displayName || user?.username || '-'}
+            <span className="font-semibold text-slate-700">User:</span> {displayName}
             <span className="mx-2 text-slate-300">|</span>
             <span className="font-semibold text-slate-700">Session expires:</span> {formatDateTime(user?.expiresAt)} ({formatRelativeExpiry(user?.expiresAt)})
           </div>
@@ -274,6 +315,48 @@ function UserIcon({ className }) {
       <circle cx="12" cy="8" r="3.5" strokeWidth="1.8" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 19.5c1.8-2.5 4.2-3.8 7-3.8s5.2 1.3 7 3.8" />
     </svg>
+  )
+}
+
+// สร้าง URL รูป avatar จาก ADUser
+// เช่น T9058 -> base64 = "VDkwNTg=" -> ตัด 1 ตัวท้าย -> "VDkwNTg"
+// URL: http://api.tnlx.co.th/hr/images_HR/VDkwNTg.jpg?152607
+const AVATAR_BASE = 'http://api.tnlx.co.th/hr/images_HR'
+const AVATAR_QUERY = '?152607'
+function getAvatarUrl(username) {
+  if (!username) return null
+  try {
+    // btoa รองรับ ASCII เท่านั้น — ADUser (เช่น T9058) เป็น ASCII อยู่แล้ว
+    const b64 = btoa(username)
+    const trimmed = b64.slice(0, -1) // ตัดตัวสุดท้ายออก 1 ตัว
+    return `${AVATAR_BASE}/${trimmed}.jpg${AVATAR_QUERY}`
+  } catch {
+    return null
+  }
+}
+
+// Avatar — แสดงรูปจาก ADUser, fallback ไป icon user ถ้าโหลดไม่สำเร็จ
+function Avatar({ username, name, size = 'sm' }) {
+  const [errored, setErrored] = useState(false)
+  const url = getAvatarUrl(username)
+  const sizeCls = size === 'lg' ? 'h-10 w-10' : 'h-9 w-9'
+  const iconCls = size === 'lg' ? 'h-5 w-5' : 'h-4 w-4'
+  if (!url || errored) {
+    return (
+      <div className={`flex ${sizeCls} items-center justify-center rounded-full bg-slate-200 text-slate-600`}>
+        <UserIcon className={iconCls} />
+      </div>
+    )
+  }
+  return (
+    <div className={`flex ${sizeCls} items-center justify-center rounded-full bg-slate-200 overflow-hidden flex-shrink-0`}>
+      <img
+        src={url}
+        alt={name || username}
+        className={`${sizeCls} object-cover`}
+        onError={() => setErrored(true)}
+      />
+    </div>
   )
 }
 

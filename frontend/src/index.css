@@ -140,6 +140,12 @@
       shadow-sm;
   }
 
+  /* ---- Info Alert ---- */
+  .info-alert {
+    @apply flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50
+      px-4 py-3 text-sm text-sky-700 shadow-sm;
+  }
+
   /* ---- Modal ---- */
   .modal-overlay {
     @apply fixed inset-0 z-50 flex items-center justify-center p-4

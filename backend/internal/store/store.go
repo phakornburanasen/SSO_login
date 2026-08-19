@@ -52,6 +52,16 @@ type Repository interface {
 	// Audit
 	ListAudit(ctx context.Context, limit int) ([]model.LoginAudit, error)
 
+	// Auth: envs ที่ user เป็นเจ้าของ (กรองจาก sso_environments.ADUser)
+	ListAccessibleEnvsByADUser(ctx context.Context, adUsername string) ([]model.AccessibleEnv, error)
+	CountAccessibleEnvsByADUser(ctx context.Context, adUsername string) (int, error)
+	IsAdminUser(ctx context.Context, adUsername string) (bool, error)
+
+	// Admin management (sso_admins)
+	ListAdmins(ctx context.Context) ([]model.Admin, error)
+	AddAdmin(ctx context.Context, a model.Admin) (int64, error)
+	RemoveAdmin(ctx context.Context, id int64) error
+
 	// Note: admin auth is JWT-based (stateless) and does not use the repository.
 	// The sso_sessions table is reserved for app-level access sessions.
 }
@@ -474,6 +484,122 @@ func (s *SQLStore) ListAudit(ctx context.Context, limit int) ([]model.LoginAudit
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// ---------- Auth: envs ที่ user ดูแล ----------
+
+// ListAccessibleEnvsByADUser คืน env ทั้งหมดที่ user เป็นเจ้าของ
+// (กรองจาก sso_environments.ADUser = <username> และ active)
+func (s *SQLStore) ListAccessibleEnvsByADUser(ctx context.Context, adUsername string) ([]model.AccessibleEnv, error) {
+	rows, e := s.pool.Query(ctx, `
+		SELECT e.env_id, a.app_code, e.env_code, e.env_name,
+		       e.base_url, COALESCE(host(e.host_ip),''), COALESCE(e.base_path,''),
+		       e.is_active
+		FROM sso_environments e
+		JOIN sso_applications a ON a.app_id = e.app_id
+		WHERE LOWER(COALESCE(e."ADUser",'')) = LOWER($1)
+		  AND e.is_active = TRUE
+		  AND a.is_active = TRUE
+		ORDER BY a.app_code, e.env_code`, adUsername)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := make([]model.AccessibleEnv, 0)
+	for rows.Next() {
+		var v model.AccessibleEnv
+		if e = rows.Scan(&v.ID, &v.AppCode, &v.EnvCode, &v.EnvName,
+			&v.BaseURL, &v.HostIP, &v.BasePath, &v.Active); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// CountAccessibleEnvsByADUser นับจำนวน env ที่ user ดูแล
+func (s *SQLStore) CountAccessibleEnvsByADUser(ctx context.Context, adUsername string) (int, error) {
+	var n int
+	row := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM sso_environments
+		WHERE LOWER(COALESCE("ADUser",'')) = LOWER($1)
+		  AND is_active = TRUE`, adUsername)
+	err := row.Scan(&n)
+	return n, err
+}
+
+// IsAdminUser เช็คว่า user เป็น admin หรือไม่
+// ใช้ตาราง sso_admins เท่านั้น — ไม่ปนกับการเช็ค env ownership
+// (admin = ผู้ดูแลระบบ, เห็น env ทั้งหมด, จัดการทุกอย่างได้)
+func (s *SQLStore) IsAdminUser(ctx context.Context, adUsername string) (bool, error) {
+	var n int
+	row := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM sso_admins
+		WHERE LOWER(ad_username) = LOWER($1)
+		  AND is_active = TRUE`, adUsername)
+	if err := row.Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// ListAdmins คืนรายชื่อ admin ทั้งหมด
+func (s *SQLStore) ListAdmins(ctx context.Context) ([]model.Admin, error) {
+	rows, e := s.pool.Query(ctx, `
+		SELECT admin_id, ad_username, COALESCE(display_name,''),
+		       COALESCE(note,''), is_active, created_at, updated_at
+		FROM sso_admins
+		ORDER BY ad_username`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := make([]model.Admin, 0)
+	for rows.Next() {
+		var a model.Admin
+		if e = rows.Scan(&a.ID, &a.ADUsername, &a.DisplayName, &a.Note,
+			&a.Active, &a.CreatedAt, &a.UpdatedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// AddAdmin เพิ่ม admin ใหม่ (ถ้ามีอยู่แล้วคืน id เดิม)
+func (s *SQLStore) AddAdmin(ctx context.Context, a model.Admin) (int64, error) {
+	if len(a.ADUsername) == 0 || len(a.ADUsername) > 15 {
+		return 0, errors.New("ad_username must be 1-15 chars")
+	}
+	var id int64
+	row := s.pool.QueryRow(ctx, `
+		INSERT INTO sso_admins (ad_username, display_name, note, is_active)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (ad_username) DO UPDATE
+			SET display_name = EXCLUDED.display_name,
+			    note         = EXCLUDED.note,
+			    is_active    = EXCLUDED.is_active,
+			    updated_at   = NOW()
+		RETURNING admin_id`,
+		a.ADUsername, nullStr(a.DisplayName), nullStr(a.Note), a.Active)
+	if err := row.Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// RemoveAdmin ลบ admin (soft delete: set is_active=false)
+func (s *SQLStore) RemoveAdmin(ctx context.Context, id int64) error {
+	tag, e := s.pool.Exec(ctx, `
+		UPDATE sso_admins SET is_active = FALSE, updated_at = NOW()
+		WHERE admin_id = $1`, id)
+	if e != nil {
+		return e
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("admin not found")
+	}
+	return nil
 }
 
 // ---------- helpers ----------

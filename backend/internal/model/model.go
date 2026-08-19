@@ -177,11 +177,37 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type LoginResult struct {
-	Token       string    `json:"token"`
-	Username    string    `json:"username"`
+// AccessibleEnv — ข้อมูลย่อของ env ที่ user มีสิทธิ์จัดการ
+// (กรองจาก sso_environments.ADUser = <username>)
+type AccessibleEnv struct {
+	ID       int64  `json:"id"`
+	AppCode  string `json:"appCode"`
+	EnvCode  string `json:"envCode"`
+	EnvName  string `json:"envName"`
+	BaseURL  string `json:"baseUrl"`
+	HostIP   string `json:"hostIp"`
+	BasePath string `json:"basePath"`
+	Active   bool   `json:"active"`
+}
+
+// Admin — รายชื่อ admin จากตาราง sso_admins
+type Admin struct {
+	ID          int64     `json:"id"`
+	ADUsername  string    `json:"adUsername"`
 	DisplayName string    `json:"displayName"`
-	ExpiresAt   time.Time `json:"expiresAt"`
+	Note        string    `json:"note"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type LoginResult struct {
+	Token          string          `json:"token"`
+	Username       string          `json:"username"`
+	DisplayName    string          `json:"displayName"`
+	ExpiresAt      time.Time       `json:"expiresAt"`
+	AccessibleEnvs []AccessibleEnv `json:"accessibleEnvs"`
+	Role           string          `json:"role"` // "admin" | "user" — admin เห็น env ทั้งหมด
 }
 
 // --- Check Access Request / Result ---

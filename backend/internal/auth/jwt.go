@@ -21,13 +21,16 @@ var (
 )
 
 // Claims is the JWT payload for the admin login session.
-//   Sub  = AD username (subject)
-//   Name = display name
-//   Exp  = expiration time (unix seconds)
-//   Iat  = issued-at time (unix seconds)
+//
+//	Sub  = AD username (subject)
+//	Name = display name
+//	Role = "admin" | "user" — admin เห็น env ทั้งหมด, user เห็นเฉพาะของตัวเอง
+//	Exp  = expiration time (unix seconds)
+//	Iat  = issued-at time (unix seconds)
 type Claims struct {
 	Sub  string `json:"sub"`
 	Name string `json:"name,omitempty"`
+	Role string `json:"role,omitempty"`
 	Exp  int64  `json:"exp"`
 	Iat  int64  `json:"iat"`
 }
@@ -46,13 +49,15 @@ func NewJWT(secret string) *JWT {
 }
 
 // Sign issues a new JWT for the given subject (username) and display name.
+// role = "admin" | "user"  — ใส่ใน claim เพื่อให้ adminOnly middleware เช็คได้โดยไม่ต้อง query DB
 // Returns the encoded token and its expiration time.
-func (j *JWT) Sign(sub, name string, ttl time.Duration) (string, time.Time, error) {
+func (j *JWT) Sign(sub, name, role string, ttl time.Duration) (string, time.Time, error) {
 	now := time.Now()
 	exp := now.Add(ttl)
 	claims := Claims{
 		Sub:  sub,
 		Name: name,
+		Role: role,
 		Exp:  exp.Unix(),
 		Iat:  now.Unix(),
 	}

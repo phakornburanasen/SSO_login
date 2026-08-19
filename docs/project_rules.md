@@ -86,6 +86,23 @@ Keep this section updated when the structure changes significantly.
 
 * Go: ใช้ `camelCase` สำหรับ variable/function, `PascalCase` สำหรับ exported, `UPPER_CASE` สำหรับ const
 * Database: snake_case (เช่น `sso_login_audit`, `host_ip`)
+
+### Login permission model (สำคัญ)
+
+แยก **admin role** ออกจาก **env ownership** เสมอ — ห้ามปนกัน:
+
+| Role | ตรวจจาก | สิทธิ์ |
+|------|---------|--------|
+| **admin** | `sso_admins` (ตารางแยก) | เห็น env ทั้งหมด, จัดการ admins |
+| **user** | `sso_environments.ADUser` | เฉพาะ env ที่ตัวเองเป็น ADUser |
+
+ลำดับการตรวจสอบ login:
+1. username/password ไม่ว่าง
+2. `IsAdminUser` → query `sso_admins` เท่านั้น (ห้าม query `sso_environments`)
+3. ถ้าไม่ใช่ admin → `ListAccessibleEnvsByADUser`
+4. ถ้า envs ว่าง → `ErrNoPermission` (HTTP 403)
+5. ถ้า pass ทั้งหมด → ออก JWT ใส่ role ใน claims
+
 * JSON tag: camelCase (เช่น `adUsername`, `baseUrl`)
 * API path: kebab-case (เช่น `/api/check-access`, `/api/allowed-users`)
 

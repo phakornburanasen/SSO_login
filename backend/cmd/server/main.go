@@ -34,8 +34,11 @@ func main() {
 	log.Printf("connected to PostgreSQL")
 
 	jwt := auth.NewJWT(cfg.JWTSecret)
-	svc := service.New(repo, jwt, time.Duration(cfg.JWTTTLMinutes)*time.Minute)
+	empClient := service.NewEmployeeAPIClient(cfg)
+	svc := service.New(repo, jwt, time.Duration(cfg.JWTTTLMinutes)*time.Minute, empClient)
 	handler := httpapi.New(svc, cfg)
+	log.Printf("employee API: %s (timeout=%s, cache=%s)",
+		cfg.EmployeeAPIURL, cfg.EmployeeAPITimeout, cfg.EmployeeCacheTTL)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

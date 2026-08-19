@@ -59,17 +59,24 @@ async function request(method, path, body, opts = {}) {
       clearAuth()
       window.dispatchEvent(new CustomEvent('sso:unauthorized'))
     }
-    const msg = (data && data.error) || res.statusText
-    throw new Error(msg)
+    const body = data || {}
+    const msg = body.error || res.statusText
+    // แนบ body ทั้งก้อนไว้ใน error เพื่อให้ caller ใช้ hint/reason ได้
+    const err = new Error(msg)
+    err.backend = body
+    err.status  = res.status
+    throw err
   }
   return data
 }
 
 export const api = {
   // auth
-  login:  (username, password) => request('POST', '/api/auth/login', { username, password }),
-  logout: ()                   => request('POST', '/api/auth/logout', {}),
-  me:     ()                   => request('GET',  '/api/auth/me'),
+  login:      (username, password) => request('POST', '/api/auth/login', { username, password }),
+  logout:     ()                   => request('POST', '/api/auth/logout', {}),
+  me:         ()                   => request('GET',  '/api/auth/me'),
+  myEnvs:     ()                   => request('GET',  '/api/my-envs'),
+  getEmployee:(username)           => request('GET',  `/api/employee/${encodeURIComponent(username)}`),
 
   // apps
   listApps:   ()                => request('GET',    '/api/apps'),

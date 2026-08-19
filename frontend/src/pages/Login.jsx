@@ -6,24 +6,36 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
+  const [error, setError]       = useState(null) // { message, hint, reason }
 
   const submit = async (e) => {
     e.preventDefault()
-    setError('')
+    setError(null)
     if (!username.trim() || !password) {
-      setError('กรุณากรอก username และ password')
+      setError({ message: 'กรุณากรอก username และ password' })
       return
     }
     setLoading(true)
     try {
       const res = await api.login(username.trim(), password)
       setToken(res.token)
-      const u = { username: res.username, displayName: res.displayName, expiresAt: res.expiresAt }
+      const u = {
+        username:       res.username,
+        displayName:    res.displayName,
+        expiresAt:      res.expiresAt,
+        role:           res.role || 'user',
+        accessibleEnvs: res.accessibleEnvs || [],
+      }
       setUser(u)
       onLogin(u)
     } catch (err) {
-      setError(err.message || 'เข้าสู่ระบบไม่สำเร็จ')
+      // err.backend มาจาก response body ของ backend
+      const data = err.backend || {}
+      setError({
+        message: err.message || 'เข้าสู่ระบบไม่สำเร็จ',
+        hint:    data.hint,
+        reason:  data.reason,
+      })
     } finally {
       setLoading(false)
     }
@@ -114,7 +126,12 @@ export default function Login({ onLogin }) {
                 <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>{error}</span>
+                <div className="flex-1 space-y-1">
+                  <p className="font-medium">{error.message}</p>
+                  {error.hint && (
+                    <p className="text-xs text-rose-600/80">{error.hint}</p>
+                  )}
+                </div>
               </div>
             )}
 

@@ -55,7 +55,7 @@ export default function CheckAccess() {
           </div>
           <div>
             <label className="label">ADUser</label>
-            <input className="input font-mono" value={form.adUsername} onChange={(e) => setForm({ ...form, adUsername: e.target.value })} placeholder="somchai.s" />
+            <input className="input font-mono" value={form.adUsername} onChange={(e) => setForm({ ...form, adUsername: e.target.value })} placeholder="ADUser" />
           </div>
           <button className="btn-primary" disabled={loading}>
             {loading ? (

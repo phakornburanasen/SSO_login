@@ -33,6 +33,8 @@ func New(s *service.Service, cfg config.Config) http.Handler {
 	mux.HandleFunc("POST /api/auth/login", a.login)
 	mux.HandleFunc("POST /api/auth/logout", a.logout)
 	mux.Handle("GET /api/auth/me", a.session(http.HandlerFunc(a.me)))
+	mux.Handle("GET /api/my-envs", a.session(http.HandlerFunc(a.myEnvs)))
+	mux.Handle("GET /api/employee/{username}", a.session(http.HandlerFunc(a.employee)))
 
 	// check access
 	mux.HandleFunc("POST /api/check-access", a.checkAccess)
@@ -64,6 +66,11 @@ func New(s *service.Service, cfg config.Config) http.Handler {
 	// audit
 	mux.HandleFunc("GET /api/audit", a.listAudit)
 
+	// admins (admin-only)
+	mux.Handle("GET /api/admins", a.session(http.HandlerFunc(a.listAdmins)))
+	mux.Handle("POST /api/admins", a.session(a.adminOnly(http.HandlerFunc(a.createAdmin))))
+	mux.Handle("DELETE /api/admins/{id}", a.session(a.adminOnly(http.HandlerFunc(a.deleteAdmin))))
+
 	return a.recover(a.cors(a.log(mux)))
 }
 
@@ -80,14 +87,97 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := a.s.Login(r.Context(), in.Username, in.Password, clientIP(r))
 	if err != nil {
-		write(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
+		// แยกสถานะตามประเภท error
+		switch {
+		case errors.Is(err, service.ErrNoPermission):
+			// 403 — login สำเร็จแต่ไม่มีสิทธิ์จัดการ env ใดๆ
+			write(w, http.StatusForbidden, map[string]any{
+				"error":  err.Error(),
+				"reason": "no_permission",
+				"hint":   "ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์เข้าจัดการ environment",
+			})
+		case errors.Is(err, service.ErrInvalidCredentials):
+			// 401 — username/password ผิด
+			write(w, http.StatusUnauthorized, map[string]any{
+				"error":  err.Error(),
+				"reason": "invalid_credentials",
+			})
+		case errors.Is(err, service.ErrSystemNotReady):
+			// 503 — ระบบยังไม่พร้อม (เช่น ยังไม่ได้รัน migration)
+			write(w, http.StatusServiceUnavailable, map[string]any{
+				"error":  err.Error(),
+				"reason": "system_not_ready",
+				"hint":   "กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบ database schema",
+			})
+		default:
+			// 500 — internal error อื่นๆ
+			serverError(w, err)
+		}
 		return
 	}
 	write(w, http.StatusOK, map[string]any{
-		"token":       res.Token,
-		"username":    res.Username,
-		"displayName": res.DisplayName,
-		"expiresAt":   res.ExpiresAt,
+		"token":          res.Token,
+		"username":       res.Username,
+		"displayName":    res.DisplayName,
+		"expiresAt":      res.ExpiresAt,
+		"role":           res.Role,
+		"accessibleEnvs": res.AccessibleEnvs,
+	})
+}
+
+func (a *API) myEnvs(w http.ResponseWriter, r *http.Request) {
+	uname, _ := r.Context().Value(ctxKeyUser).(string)
+	envs, err := a.s.MyEnvs(r.Context(), uname)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	write(w, http.StatusOK, map[string]any{
+		"username": uname,
+		"envs":     envs,
+	})
+}
+
+// employee — ดึงข้อมูลชื่อ-นามสกุล จาก external API (proxy + cache)
+// URL: GET /api/employee/{username}
+// คืน JSON: { empId, form_first_name, form_last_name, fullName, ... }
+func (a *API) employee(w http.ResponseWriter, r *http.Request) {
+	username := strings.TrimSpace(r.PathValue("username"))
+	if username == "" {
+		write(w, http.StatusBadRequest, map[string]any{"error": "username is required"})
+		return
+	}
+	if len(username) > 15 {
+		write(w, http.StatusBadRequest, map[string]any{"error": "username too long (max 15)"})
+		return
+	}
+
+	emp, fromCache, err := a.s.GetEmployee(r.Context(), username)
+	if err != nil {
+		// External API ล้ม — แต่ไม่อยากให้ login flow พัง
+		// คืน 200 พร้อม fallback เป็น username เปล่าๆ
+		write(w, http.StatusOK, map[string]any{
+			"empId":           username,
+			"form_first_name": "",
+			"form_last_name":  "",
+			"fullName":        username,
+			"available":       false,
+			"error":           err.Error(),
+		})
+		return
+	}
+	write(w, http.StatusOK, map[string]any{
+		"empId":           emp.EmpID,
+		"form_first_name": emp.FirstName,
+		"form_last_name":  emp.LastName,
+		"fullName":        emp.FullName,
+		"title":           emp.Title,
+		"department":      emp.Department,
+		"position":        emp.Position,
+		"email":           emp.Email,
+		"profileImage":    emp.ProfileImage,
+		"available":       true,
+		"fromCache":       fromCache,
 	})
 }
 
@@ -106,12 +196,86 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	uname, _ := r.Context().Value(ctxKeyUser).(string)
-	write(w, http.StatusOK, map[string]any{"username": uname})
+	role, _ := r.Context().Value(ctxKeyRole).(string)
+	envs, err := a.s.MyEnvs(r.Context(), uname)
+	if err != nil {
+		write(w, http.StatusOK, map[string]any{
+			"username": uname, "role": role, "envs": []any{},
+		})
+		return
+	}
+	write(w, http.StatusOK, map[string]any{
+		"username": uname,
+		"role":     role,
+		"envs":     envs,
+	})
+}
+
+// ----- admin (CRUD) -----
+
+func (a *API) listAdmins(w http.ResponseWriter, r *http.Request) {
+	admins, err := a.s.ListAdmins(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	write(w, http.StatusOK, map[string]any{"admins": admins})
+}
+
+func (a *API) createAdmin(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ADUsername  string `json:"adUsername"`
+		DisplayName string `json:"displayName"`
+		Note        string `json:"note"`
+		Active      *bool  `json:"active"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.ADUsername == "" {
+		write(w, http.StatusBadRequest, map[string]any{"error": "adUsername is required"})
+		return
+	}
+	if in.ADUsername == "admin" {
+		write(w, http.StatusBadRequest, map[string]any{
+			"error":  "username 'admin' is reserved",
+			"reason": "ใช้ชื่ออื่น — username 'admin' จองไว้สำหรับ system administrator",
+		})
+		return
+	}
+	active := true
+	if in.Active != nil {
+		active = *in.Active
+	}
+	id, err := a.s.AddAdmin(r.Context(), model.Admin{
+		ADUsername:  in.ADUsername,
+		DisplayName: in.DisplayName,
+		Note:        in.Note,
+		Active:      active,
+	})
+	if err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	write(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+func (a *API) deleteAdmin(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if err := a.s.RemoveAdmin(r.Context(), id); err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	write(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 type ctxKey string
 
 const ctxKeyUser ctxKey = "user"
+const ctxKeyRole ctxKey = "role"
 
 // session middleware — ตรวจ token จาก header Authorization: Bearer <token>
 // หรือ query ?token=<token>
@@ -122,13 +286,29 @@ func (a *API) session(next http.Handler) http.Handler {
 			write(w, http.StatusUnauthorized, map[string]any{"error": "missing token"})
 			return
 		}
-		uname, err := a.s.VerifyToken(r.Context(), token)
+		uname, role, err := a.s.VerifyTokenWithRole(r.Context(), token)
 		if err != nil {
 			write(w, http.StatusUnauthorized, map[string]any{"error": "invalid or expired session"})
 			return
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyUser, uname)
+		ctx = context.WithValue(ctx, ctxKeyRole, role)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// adminOnly — middleware ใช้ร่วมกับ session() เพื่อบังคับว่า caller ต้องเป็น admin
+func (a *API) adminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		role, _ := r.Context().Value(ctxKeyRole).(string)
+		if role != "admin" {
+			write(w, http.StatusForbidden, map[string]any{
+				"error":  "admin only",
+				"reason": "this endpoint requires admin role (sso_admins)",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

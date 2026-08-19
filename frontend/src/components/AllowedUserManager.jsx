@@ -185,7 +185,7 @@ export default function AllowedUserManager() {
               className="input font-mono"
               value={adUsername}
               onChange={(e) => setAdUsername(e.target.value)}
-              placeholder="somchai.s"
+              placeholder="ADUser"
             />
           </div>
 

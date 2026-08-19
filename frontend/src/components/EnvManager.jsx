@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api.js'
+import { api, getUser } from '../api.js'
 import Pagination from './Pagination.jsx'
 
 const EMPTY = {
@@ -14,6 +14,13 @@ const EMPTY = {
 }
 
 export default function EnvManager() {
+  const currentUser = getUser()
+  const isAdmin = currentUser?.role === 'admin'
+  const accessibleEnvIds = useMemo(
+    () => new Set((currentUser?.accessibleEnvs || []).map(e => e.id)),
+    [currentUser]
+  )
+
   const [apps, setApps] = useState([])
   const [envs, setEnvs] = useState([])
   const [filterApp, setFilterApp] = useState(0)
@@ -37,8 +44,13 @@ export default function EnvManager() {
     setErr('')
     try {
       const [a, e] = await Promise.all([api.listApps(), api.listEnvs(filterApp)])
+      const allEnvs = e.envs || []
+      // กรอง: ถ้าไม่ใช่ admin → เห็นเฉพาะ env ที่อยู่ใน accessibleEnvs
+      const filtered = isAdmin
+        ? allEnvs
+        : allEnvs.filter((env) => accessibleEnvIds.has(env.id))
       setApps(a.apps || [])
-      setEnvs(e.envs || [])
+      setEnvs(filtered)
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -57,7 +69,9 @@ export default function EnvManager() {
 
   const openNew = () => {
     setEditing(null)
-    setForm({ ...EMPTY, appId: apps[0]?.id || 0 })
+    // ถ้าเป็น user ทั่วไป → pre-fill adUser ด้วย username ตัวเอง
+    const defaultAdUser = isAdmin ? '' : (currentUser?.username || '')
+    setForm({ ...EMPTY, appId: apps[0]?.id || 0, adUser: defaultAdUser })
     setErr('')
     setModalOpen(true)
   }
@@ -136,8 +150,14 @@ export default function EnvManager() {
     <div className="space-y-6">
       <div className="table-toolbar">
         <div>
-          <h2 className="section-title">Environment ทั้งหมด</h2>
-          <p className="section-desc">จัดการ base URL, host IP และ AD user สำหรับแต่ละ environment ของระบบ</p>
+          <h2 className="section-title">
+            {isAdmin ? 'Environment ทั้งหมด' : 'Environment ที่คุณดูแล'}
+          </h2>
+          <p className="section-desc">
+            {isAdmin
+              ? 'จัดการ base URL, host IP และ AD user สำหรับแต่ละ environment ของระบบ'
+              : 'คุณเห็นเฉพาะ environment ที่คุณเป็น ADUser เท่านั้น — สิทธิ์ถูกควบคุมโดยฐานข้อมูล sso_environments.ADUser'}
+          </p>
         </div>
 
         <div className="subcard ml-auto flex flex-wrap items-end gap-3 px-4 py-4">
@@ -164,6 +184,18 @@ export default function EnvManager() {
           </button>
         </div>
       </div>
+
+      {!isAdmin && (
+        <div className="info-alert">
+          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>
+            คุณดูแลได้ <strong>{currentUser?.accessibleEnvs?.length || 0}</strong> environment
+            — ระบบ login เช็คสิทธิ์จาก <code className="font-mono text-xs">sso_environments.ADUser</code> ในฐานข้อมูล
+          </span>
+        </div>
+      )}
 
       {err && <div className="error-alert fade-in">{err}</div>}
 

@@ -1,32 +1,40 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api.js'
+import { api, getUser } from '../api.js'
 import Pagination from './Pagination.jsx'
 
-const EMPTY = { code: '', name: '', description: '', active: true }
+const EMPTY = {
+  code: '',
+  name: '',
+  description: '',
+  active: true,
+}
 
 export default function AppManager() {
-  const [items, setItems] = useState([])
-  const [form, setForm] = useState(EMPTY)
-  const [modalOpen, setModalOpen] = useState(false)
+  const currentUser = getUser()
+  const isAdmin = currentUser?.role === 'admin'
+
+  const [apps, setApps] = useState([])
   const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(EMPTY)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
-  const pagedItems = useMemo(() => {
+  const pagedApps = useMemo(() => {
     const start = (page - 1) * pageSize
-    return items.slice(start, start + pageSize)
-  }, [items, page, pageSize])
+    return apps.slice(start, start + pageSize)
+  }, [apps, page, pageSize])
 
   const load = async () => {
     setLoading(true)
     setErr('')
     try {
-      const r = await api.listApps()
-      setItems(r.apps || [])
+      const a = await api.listApps()
+      setApps(a.apps || [])
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -36,12 +44,13 @@ export default function AppManager() {
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
+    const totalPages = Math.max(1, Math.ceil(apps.length / pageSize))
     if (page > totalPages) setPage(totalPages)
-  }, [items.length, page, pageSize])
+  }, [apps.length, page, pageSize])
 
   const openNew = () => {
     setEditing(null)
@@ -53,10 +62,10 @@ export default function AppManager() {
   const openEdit = (row) => {
     setEditing(row)
     setForm({
-      code: row.code,
-      name: row.name,
-      description: row.description,
-      active: row.active,
+      code: row.code || '',
+      name: row.name || '',
+      description: row.description || '',
+      active: !!row.active,
     })
     setErr('')
     setModalOpen(true)
@@ -72,11 +81,20 @@ export default function AppManager() {
   const submit = async (e) => {
     e.preventDefault()
     setErr('')
-    if (!form.code.trim() || !form.name.trim()) return setErr('กรุณากรอก Code และ Name')
+    if (!form.code.trim()) return setErr('กรุณากรอก App Code')
+    if (!form.name.trim()) return setErr('กรุณากรอก App Name')
+
+    const body = {
+      code: form.code.trim().toUpperCase(),
+      name: form.name.trim(),
+      description: form.description.trim(),
+      active: !!form.active,
+    }
+
     setSaving(true)
     try {
-      if (editing) await api.updateApp(editing.id, form)
-      else await api.createApp(form)
+      if (editing) await api.updateApp(editing.id, body)
+      else await api.createApp(body)
       closeModal()
       await load()
     } catch (e) {
@@ -105,10 +123,13 @@ export default function AppManager() {
     <div className="space-y-6">
       <div className="table-toolbar">
         <div>
-          <h2 className="section-title">รายการแอปพลิเคชัน</h2>
-          <p className="section-desc">กำหนด code, ชื่อระบบ และสถานะการใช้งานของแต่ละ application</p>
+          <h2 className="section-title">Application ทั้งหมด</h2>
+          <p className="section-desc">
+            ดูแลรายการระบบ (Application) — ใช้เป็นข้อมูลตั้งต้นสำหรับสร้าง Environment ต่อไป
+          </p>
         </div>
-        <div className="ml-auto">
+
+        <div className="ml-auto flex items-center">
           <button type="button" className="btn-primary" onClick={openNew}>
             + เพิ่ม Application
           </button>
@@ -139,21 +160,21 @@ export default function AppManager() {
                   </td>
                 </tr>
               )}
-              {!loading && items.length === 0 && (
+              {!loading && apps.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="td py-10 text-center text-slate-400">ยังไม่มี Application ในระบบ</td>
+                  <td colSpan={5} className="td py-10 text-center text-slate-400">ยังไม่มี Application</td>
                 </tr>
               )}
               {!loading &&
-                pagedItems.map((row) => (
+                pagedApps.map((row) => (
                   <tr key={row.id} className="table-row-hover fade-in">
                     <td className="td">
-                      <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs font-semibold text-slate-700">
-                        {row.code}
-                      </span>
+                      <span className="font-mono font-semibold text-slate-900">{row.code}</span>
                     </td>
                     <td className="td font-medium text-slate-900">{row.name}</td>
-                    <td className="td text-slate-500">{row.description || '-'}</td>
+                    <td className="td max-w-[420px] text-slate-600">
+                      <span className="line-clamp-2">{row.description || '-'}</span>
+                    </td>
                     <td className="td">
                       {row.active ? (
                         <span className="badge-on">Active</span>
@@ -163,11 +184,7 @@ export default function AppManager() {
                     </td>
                     <td className="td">
                       <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="btn-secondary px-3 py-1.5 text-xs"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => openEdit(row)}>
                           แก้ไข
                         </button>
                         <button
@@ -187,7 +204,7 @@ export default function AppManager() {
 
         <Pagination
           page={page}
-          totalItems={items.length}
+          totalItems={apps.length}
           pageSize={pageSize}
           onPageChange={setPage}
           onPageSizeChange={(size) => {
@@ -206,11 +223,7 @@ export default function AppManager() {
                 <h2 className="text-lg font-semibold text-slate-900">
                   {editing ? `แก้ไข Application` : 'เพิ่ม Application ใหม่'}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  {editing
-                    ? `แก้ไขข้อมูลของ ${editing.code}`
-                    : 'กำหนดข้อมูลหลักของระบบให้พร้อมใช้งาน'}
-                </p>
+                <p className="mt-1 text-sm text-slate-500">กำหนดรหัสและชื่อระบบที่ต้องการจัดการสิทธิ์</p>
               </div>
               <button type="button" onClick={closeModal} className="btn-ghost h-10 w-10 rounded-xl p-0 text-xl leading-none">
                 ×
@@ -222,16 +235,17 @@ export default function AppManager() {
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="label">Code *</label>
+                    <label className="label">App Code *</label>
                     <input
                       className="input font-mono uppercase"
                       value={form.code}
-                      disabled={!!editing}
+                      maxLength={30}
                       onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                      disabled={!!editing}
                     />
                   </div>
                   <div>
-                    <label className="label">Name *</label>
+                    <label className="label">App Name *</label>
                     <input
                       className="input"
                       value={form.name}
@@ -241,25 +255,20 @@ export default function AppManager() {
                   <div className="md:col-span-2">
                     <label className="label">Description</label>
                     <textarea
-                      className="input min-h-[100px] resize-y"
+                      className="input min-h-[88px]"
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      placeholder="คำอธิบายสั้นๆ เกี่ยวกับระบบนี้"
                     />
                   </div>
-                  <label className="inline-flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={form.active}
-                      onChange={(e) => setForm({ ...form, active: e.target.checked })}
-                    />
+                  <label className="inline-flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 md:col-span-2">
+                    <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
                     <span>เปิดใช้งาน Application นี้</span>
                   </label>
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                  <button type="button" className="btn-secondary" onClick={closeModal}>
-                    ยกเลิก
-                  </button>
+                  <button type="button" className="btn-secondary" onClick={closeModal}>ยกเลิก</button>
                   <button type="submit" className="btn-primary" disabled={saving}>
                     {saving ? 'กำลังบันทึก…' : 'บันทึก'}
                   </button>
@@ -280,6 +289,9 @@ export default function AppManager() {
                 <p className="mt-1 text-sm text-slate-500">
                   คุณต้องการลบ Application <strong className="text-slate-700">{deleteTarget.code}</strong> ใช่หรือไม่?
                 </p>
+                <p className="mt-2 text-xs text-amber-600">
+                  หากมี Environment ผูกกับ Application นี้อยู่ อาจไม่สามารถลบได้
+                </p>
               </div>
               <button type="button" onClick={() => setDeleteTarget(null)} className="btn-ghost h-10 w-10 rounded-xl p-0 text-xl leading-none">
                 ×
@@ -287,12 +299,8 @@ export default function AppManager() {
             </div>
             <div className="modal-body">
               <div className="flex justify-end gap-3">
-                <button type="button" className="btn-secondary" onClick={() => setDeleteTarget(null)}>
-                  ยกเลิก
-                </button>
-                <button type="button" className="btn-danger" onClick={doDelete}>
-                  ลบเลย
-                </button>
+                <button type="button" className="btn-secondary" onClick={() => setDeleteTarget(null)}>ยกเลิก</button>
+                <button type="button" className="btn-danger" onClick={doDelete}>ลบเลย</button>
               </div>
             </div>
           </div>
